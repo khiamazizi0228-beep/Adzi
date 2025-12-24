@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ADZI Coin</title>
+  <title>ADZI Coin Intro</title>
   <style>
     html,body{margin:0;height:100%;overflow:hidden;background:#05080e;}
     canvas{display:block;}
@@ -13,23 +13,21 @@
 <script type="module">
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-/* ---------- Scene ---------- */
+/* ---------------- Scene / Camera / Renderer ---------------- */
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x05080e, 8, 30);
 
-/* ---------- Camera ---------- */
 const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 0.4, 6.5);
+camera.position.set(0, 0.35, 6.8);
 camera.lookAt(0, 0, 0);
 
-/* ---------- Renderer ---------- */
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-/* ---------- Lights ---------- */
+/* ---------------- Lights (space studio) ---------------- */
 scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
 const key = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -40,44 +38,98 @@ const rim = new THREE.DirectionalLight(0x3de8ff, 0.9);
 rim.position.set(-4, 2, -4);
 scene.add(rim);
 
-/* ---------- Stars ---------- */
-function stars(count=1400){
+/* ---------------- Stars ---------------- */
+function createStars(count=1400){
   const g = new THREE.BufferGeometry();
   const p = new Float32Array(count*3);
   for(let i=0;i<count;i++){
-    p[i*3+0]=(Math.random()-0.5)*40;
-    p[i*3+1]=(Math.random()-0.5)*25;
-    p[i*3+2]=(Math.random()-0.5)*40;
+    p[i*3+0] = (Math.random()-0.5) * 40;
+    p[i*3+1] = (Math.random()-0.5) * 25;
+    p[i*3+2] = (Math.random()-0.5) * 40;
   }
   g.setAttribute("position", new THREE.BufferAttribute(p,3));
-  const m = new THREE.PointsMaterial({color:0xffffff,size:0.035,opacity:0.9,transparent:true});
-  scene.add(new THREE.Points(g,m));
+  const m = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.035,
+    opacity: 0.9,
+    transparent: true
+  });
+  const stars = new THREE.Points(g,m);
+  scene.add(stars);
+  return stars;
 }
-stars();
+const stars = createStars();
 
-/* ---------- ADZI Logo Texture ---------- */
+/* ---------------- Nebula glow plane (subtle) ---------------- */
+function makeNebulaTexture(size=512){
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#05080e";
+  ctx.fillRect(0,0,size,size);
+
+  const blobs = [
+    {x:0.35,y:0.45,r:0.45, col:"rgba(0,220,255,0.12)"},
+    {x:0.65,y:0.55,r:0.50, col:"rgba(34,197,94,0.08)"},
+    {x:0.50,y:0.35,r:0.40, col:"rgba(167,139,250,0.06)"}
+  ];
+  for(const b of blobs){
+    const g = ctx.createRadialGradient(size*b.x, size*b.y, 0, size*b.x, size*b.y, size*b.r*size);
+    g.addColorStop(0, b.col);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,size,size);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const nebula = new THREE.Mesh(
+  new THREE.PlaneGeometry(50, 30),
+  new THREE.MeshBasicMaterial({
+    map: makeNebulaTexture(),
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false
+  })
+);
+nebula.position.set(0, 0.0, -18);
+scene.add(nebula);
+
+/* ---------------- ADZI Logo Texture (neon cyan) ---------------- */
 function makeLogo(size=1024){
   const c=document.createElement("canvas");
   c.width=c.height=size;
   const ctx=c.getContext("2d");
-
   ctx.clearRect(0,0,size,size);
 
   // glow
-  const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size*0.45);
+  const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size*0.46);
   g.addColorStop(0,"rgba(0,220,255,0.25)");
   g.addColorStop(1,"rgba(0,0,0,0)");
   ctx.fillStyle=g;
   ctx.fillRect(0,0,size,size);
 
-  // text
+  // main text
   ctx.textAlign="center";
   ctx.textBaseline="middle";
   ctx.font="900 220px system-ui, -apple-system, Arial";
   ctx.fillStyle="#00dcff";
-  ctx.shadowColor="rgba(0,220,255,0.8)";
-  ctx.shadowBlur=35;
+  ctx.shadowColor="rgba(0,220,255,0.85)";
+  ctx.shadowBlur=38;
   ctx.fillText("ADZI",size/2,size/2);
+
+  // tiny underline
+  ctx.shadowBlur=0;
+  ctx.strokeStyle="rgba(0,220,255,0.65)";
+  ctx.lineWidth=16;
+  ctx.lineCap="round";
+  ctx.beginPath();
+  ctx.moveTo(size*0.35, size*0.62);
+  ctx.lineTo(size*0.65, size*0.62);
+  ctx.stroke();
 
   const tex=new THREE.CanvasTexture(c);
   tex.colorSpace=THREE.SRGBColorSpace;
@@ -85,63 +137,157 @@ function makeLogo(size=1024){
 }
 const logoTex = makeLogo();
 
-/* ---------- Coin ---------- */
+/* ---------------- Build COIN (both sides) ---------------- */
 const coin = new THREE.Group();
 scene.add(coin);
 
-// Front
 const faceMat = new THREE.MeshStandardMaterial({
   map: logoTex,
-  transparent:true,
-  roughness:0.35,
-  metalness:0.1,
-  emissive:new THREE.Color(0x00dcff),
-  emissiveIntensity:0.35
+  transparent: true,
+  roughness: 0.35,
+  metalness: 0.1,
+  emissive: new THREE.Color(0x00dcff),
+  emissiveIntensity: 0.35
 });
-const front = new THREE.Mesh(new THREE.CircleGeometry(2.2,128), faceMat
-);
-front.position.z=0.15;
+
+// front
+const front = new THREE.Mesh(new THREE.CircleGeometry(2.2, 128), faceMat);
+front.position.z = 0.15;
 coin.add(front);
 
-// Back (same logo, mirrored)
-const back = new THREE.Mesh(new THREE.CircleGeometry(2.2,128), faceMat);
-back.rotation.y=Math.PI;
-back.position.z=-0.15;
+// back (same logo, mirrored)
+const back = new THREE.Mesh(new THREE.CircleGeometry(2.2, 128), faceMat);
+back.rotation.y = Math.PI;
+back.position.z = -0.15;
 coin.add(back);
 
-// Edge
+// edge
 const edge = new THREE.Mesh(
-  new THREE.CylinderGeometry(2.2,2.2,0.3,128,1,true),
+  new THREE.CylinderGeometry(2.2, 2.2, 0.3, 128, 1, true),
   new THREE.MeshStandardMaterial({
-    color:0x0b1c25,
-    roughness:0.4,
-    metalness:0.6,
-    emissive:new THREE.Color(0x00dcff),
-    emissiveIntensity:0.15
+    color: 0x0b1c25,
+    roughness: 0.4,
+    metalness: 0.6,
+    emissive: new THREE.Color(0x00dcff),
+    emissiveIntensity: 0.18
   })
 );
-edge.rotation.x=Math.PI/2;
+edge.rotation.x = Math.PI/2;
 coin.add(edge);
 
-/* ---------- Animation ---------- */
-const clock=new THREE.Clock();
+// orbit ring (universe vibe)
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(2.55, 0.03, 18, 180),
+  new THREE.MeshStandardMaterial({
+    color: 0x00dcff,
+    roughness: 0.35,
+    metalness: 0.05,
+    emissive: new THREE.Color(0x00dcff),
+    emissiveIntensity: 0.25
+  })
+);
+ring.rotation.x = Math.PI * 0.32;
+ring.rotation.y = Math.PI * 0.08;
+coin.add(ring);
+
+// orbit dot
+const dot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.06, 24, 24),
+  new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: new THREE.Color(0x3de8ff),
+    emissiveIntensity: 0.95,
+    roughness: 0.4
+  })
+);
+coin.add(dot);
+
+/* ---------------- Intro Animation (5–7s) ---------------- */
+const clock = new THREE.Clock();
+
+function easeOutCubic(x){ return 1 - Math.pow(1 - x, 3); }
+function easeInOutCubic(x){
+  return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3)/2;
+}
+
 function animate(){
-  const t=clock.getElapsedTime();
+  const t = clock.getElapsedTime();
 
-  coin.rotation.y = t*0.6;
-  coin.rotation.x = Math.sin(t*0.4)*0.15;
-  coin.position.y = Math.sin(t*0.8)*0.15;
+  const introIn = 2.2;  // coin flies in
+  const hold    = 1.2;  // hero hold
+  const pulse   = 1.2;  // glow pulse
+  const total   = introIn + hold + pulse;
 
-  renderer.render(scene,camera);
+  // default baseline
+  front.material.emissiveIntensity = 0.35;
+  back.material.emissiveIntensity  = 0.35;
+  edge.material.emissiveIntensity  = 0.18;
+
+  // Intro: fly from far Z -> 0, with slight tilt
+  if(t < introIn){
+    const p = easeOutCubic(t / introIn);
+
+    coin.position.z = (1 - p) * 10;
+    coin.position.y = 0.18 * Math.sin(p * Math.PI);
+    coin.rotation.y = p * 1.6;
+    coin.rotation.x = (1 - p) * 0.35;
+  }
+  // Hold: almost still
+  else if(t < introIn + hold){
+    const p = (t - introIn) / hold;
+
+    coin.position.z = 0;
+    coin.position.y = 0.06 * Math.sin(p * Math.PI);
+    coin.rotation.y = 1.6 + p * 0.15;
+    coin.rotation.x = 0.03 * Math.sin(p * Math.PI);
+  }
+  // Pulse: one nice glow pulse + begin gentle motion
+  else if(t < total){
+    const p = (t - (introIn + hold)) / pulse; // 0..1
+    const e = easeInOutCubic(p);
+
+    coin.position.z = 0;
+    coin.position.y = 0.08 * Math.sin(t * 1.4);
+    coin.rotation.y = 1.75 + e * 0.45;
+    coin.rotation.x = Math.sin(t * 0.7) * 0.12;
+
+    const glow = 0.35 + Math.sin(p * Math.PI) * 0.55;
+    front.material.emissiveIntensity = glow;
+    back.material.emissiveIntensity  = glow;
+    edge.material.emissiveIntensity  = 0.18 + glow * 0.22;
+  }
+  // Loop: normal universe rotation
+  else{
+    const tt = t - total;
+
+    coin.position.z = 0;
+    coin.position.y = Math.sin(tt * 0.8) * 0.15;
+    coin.rotation.y = 2.2 + tt * 0.6;
+    coin.rotation.x = Math.sin(tt * 0.4) * 0.15;
+  }
+
+  // Ring + orbit dot (always)
+  ring.rotation.z = t * 0.9;
+  const a = t * 1.35;
+  dot.position.set(
+    Math.cos(a) * 2.55,
+    Math.sin(a) * 0.35,
+    Math.sin(a) * 0.55
+  );
+
+  // Subtle star drift
+  stars.rotation.y = t * 0.02;
+
+  renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
 animate();
 
-/* ---------- Resize ---------- */
-addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
+/* ---------------- Resize ---------------- */
+addEventListener("resize", ()=>{
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
 </script>
 </body>
