@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Green-Guy (Correct Face Front)</title>
+  <title>ADZI — Space Logo</title>
   <style>
-    html,body{margin:0;height:100%;overflow:hidden;background:#6a4527;}
+    html,body{margin:0;height:100%;overflow:hidden;background:#020617;}
     canvas{display:block;}
   </style>
 </head>
@@ -15,166 +15,240 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
 /* ---------- Scene / Camera / Renderer ---------- */
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x6a4527);
+scene.fog = new THREE.Fog(0x020617, 8, 28);
 
-const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.45, 3.9);
-camera.lookAt(0, 1.05, 0);
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0.4, 7);
+camera.lookAt(0, 0.2, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-/* ---------- Lights (soft studio) ---------- */
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+/* ---------- Lights (soft “space studio”) ---------- */
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
-const key = new THREE.DirectionalLight(0xffffff, 1.05);
-key.position.set(3.2, 4.2, 2.0);
+const key = new THREE.DirectionalLight(0xffffff, 1.0);
+key.position.set(4, 4, 3);
 scene.add(key);
 
-const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-fill.position.set(-3.5, 2.0, 1.2);
-scene.add(fill);
-
-const rim = new THREE.DirectionalLight(0xffffff, 0.45);
-rim.position.set(0.0, 2.6, -3.5);
+const rim = new THREE.DirectionalLight(0x6ee7ff, 0.55);
+rim.position.set(-4, 2, -4);
 scene.add(rim);
 
-/* ---------- Face texture generator (color + bump) ---------- */
-const FACE = {
-  eyeY: 0.40,
-  eyeGap: 0.16,
-  eyeR: 0.075,
-  eyeStroke: 0.050,
-  smileY: 0.58,
-  smileR: 0.165,
-  smileStroke: 0.055
-};
+/* ---------- Background: stars ---------- */
+function makeStars(count = 1800){
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
 
-function makeFaceTextures(size = 1024){
-  // Color
+  for(let i=0;i<count;i++){
+    // spread in a big sphere-ish volume
+    const r = 18 + Math.random() * 18;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2*Math.random() - 1);
+
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = (r * Math.cos(phi)) * 0.7; // flatter
+    const z = r * Math.sin(phi) * Math.sin(theta);
+
+    pos[i*3+0] = x;
+    pos[i*3+1] = y;
+    pos[i*3+2] = z;
+  }
+
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.03,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.95
+  });
+
+  const stars = new THREE.Points(geo, mat);
+  scene.add(stars);
+  return stars;
+}
+const stars = makeStars();
+
+/* ---------- Nebula glow plane (subtle) ---------- */
+function makeNebulaTexture(size = 512){
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d");
 
-  ctx.fillStyle = "#22c55e";
+  ctx.fillStyle = "#020617";
   ctx.fillRect(0,0,size,size);
 
-  ctx.strokeStyle = "#0b0b0b";
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
+  // soft blobs
+  const blobs = [
+    {x:0.35,y:0.45,r:0.40, col:"rgba(34,197,94,0.18)"},
+    {x:0.65,y:0.55,r:0.42, col:"rgba(110,231,255,0.12)"},
+    {x:0.50,y:0.35,r:0.35, col:"rgba(167,139,250,0.10)"}
+  ];
+  for(const b of blobs){
+    const g = ctx.createRadialGradient(size*b.x, size*b.y, 0, size*b.x, size*b.y, size*b.r*size);
+    g.addColorStop(0, b.col);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,size,size);
+  }
 
-  const eyeY = size * FACE.eyeY;
-  const eyeR = size * FACE.eyeR;
-  const eyeGap = size * FACE.eyeGap;
-  const eyeStroke = size * FACE.eyeStroke;
-
-  ctx.lineWidth = eyeStroke;
-  ctx.beginPath(); ctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false); ctx.stroke();
-  ctx.beginPath(); ctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false); ctx.stroke();
-
-  const smileY = size * FACE.smileY;
-  const smileR = size * FACE.smileR;
-  const smileStroke = size * FACE.smileStroke;
-
-  ctx.lineWidth = smileStroke;
-  ctx.beginPath(); ctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false); ctx.stroke();
-
-  const colorTex = new THREE.CanvasTexture(c);
-  colorTex.colorSpace = THREE.SRGBColorSpace;
-
-  // Bump (engraved look)
-  const b = document.createElement("canvas");
-  b.width = b.height = size;
-  const bctx = b.getContext("2d");
-  bctx.fillStyle = "rgb(128,128,128)";
-  bctx.fillRect(0,0,size,size);
-
-  bctx.lineCap = "round";
-  bctx.lineJoin = "round";
-
-  const dent = (strokeMul, col) => {
-    bctx.strokeStyle = col;
-    bctx.lineWidth = eyeStroke * strokeMul;
-    bctx.beginPath(); bctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false); bctx.stroke();
-    bctx.beginPath(); bctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false); bctx.stroke();
-
-    bctx.lineWidth = smileStroke * strokeMul;
-    bctx.beginPath(); bctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false); bctx.stroke();
-  };
-  dent(1.25, "rgb(85,85,85)");
-  dent(0.95, "rgb(65,65,65)");
-
-  const bumpTex = new THREE.CanvasTexture(b);
-  bumpTex.colorSpace = THREE.SRGBColorSpace;
-
-  return { colorTex, bumpTex };
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-const { colorTex, bumpTex } = makeFaceTextures(1024);
-
-/* ✅ THE FIX: rotate the texture around its center so the face is FRONT */
-const FACE_ROT = -Math.PI / 2; // <-- if somehow still off, try +Math.PI/2
-for (const tex of [colorTex, bumpTex]) {
-  tex.center.set(0.5, 0.5);
-  tex.rotation = FACE_ROT;
-  tex.needsUpdate = true;
-}
-
-/* ---------- Materials ---------- */
-const headMat = new THREE.MeshPhysicalMaterial({
-  map: colorTex,
-  bumpMap: bumpTex,
-  bumpScale: -0.07,        // negative = engraved
-  roughness: 0.62,
-  metalness: 0.02,
-  sheen: 0.18,
-  sheenRoughness: 0.75
-});
-
-const bodyMat = new THREE.MeshPhysicalMaterial({
-  color: 0x22c55e,
-  roughness: 0.64,
-  metalness: 0.02,
-  sheen: 0.18,
-  sheenRoughness: 0.78
-});
-
-/* ---------- Build Green-Guy (stable UV: Sphere + Stretch) ---------- */
-const guy = new THREE.Group();
-scene.add(guy);
-
-// Head (sphere stretched like capsule, UV stays correct)
-const headGeo = new THREE.SphereGeometry(1.0, 128, 128);
-const head = new THREE.Mesh(headGeo, headMat);
-head.scale.set(1.0, 1.28, 1.0);
-head.position.set(0, 1.08, 0);
-guy.add(head);
-
-// Neck
-const neck = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.42, 0.58, 0.50, 96),
-  bodyMat
+const nebula = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 24),
+  new THREE.MeshBasicMaterial({
+    map: makeNebulaTexture(),
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false
+  })
 );
-neck.position.set(0, 0.28, 0);
-neck.rotation.x = 0.08;
-guy.add(neck);
+nebula.position.set(0, 0.2, -12);
+scene.add(nebula);
 
-// Torso
-const torso = new THREE.Mesh(new THREE.SphereGeometry(1.55, 128, 128), bodyMat);
-torso.scale.set(1.25, 0.68, 1.15);
-torso.position.set(0, -0.86, 0);
-guy.add(torso);
+/* ---------- ADZI logo texture (clean, modern) ---------- */
+function makeLogoTexture(size = 1024){
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
 
-/* ---------- Animation (subtle) ---------- */
+  // transparent background
+  ctx.clearRect(0,0,size,size);
+
+  // glow behind text
+  const glow = ctx.createRadialGradient(size*0.5, size*0.5, 0, size*0.5, size*0.5, size*0.45);
+  glow.addColorStop(0, "rgba(34,197,94,0.18)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0,0,size,size);
+
+  // text
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // subtle shadow
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 10;
+
+  // main ADZI
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "900 220px system-ui, -apple-system, Arial";
+  ctx.fillText("ADZI", size*0.5, size*0.46);
+
+  // green underline “energy”
+  ctx.shadowColor = "rgba(34,197,94,0.55)";
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = "#22c55e";
+  ctx.lineWidth = 26;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(size*0.28, size*0.62);
+  ctx.lineTo(size*0.72, size*0.62);
+  ctx.stroke();
+
+  // tiny tagline
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.font = "700 52px system-ui, -apple-system, Arial";
+  ctx.fillText("Electric City Ride", size*0.5, size*0.72);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const logoTex = makeLogoTexture();
+
+/* ---------- 3D Logo object (like a rotating “universe sign”) ---------- */
+const logoGroup = new THREE.Group();
+scene.add(logoGroup);
+
+// Logo plate (slightly rounded via two planes)
+const plateMat = new THREE.MeshStandardMaterial({
+  map: logoTex,
+  transparent: true,
+  roughness: 0.35,
+  metalness: 0.05
+});
+const plate = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 3.2), plateMat);
+plate.position.set(0, 0.2, 0);
+logoGroup.add(plate);
+
+// Back plate for depth
+const back = new THREE.Mesh(
+  new THREE.PlaneGeometry(4.6, 3.2),
+  new THREE.MeshStandardMaterial({
+    color: 0x0b1220,
+    roughness: 0.8,
+    metalness: 0.0
+  })
+);
+back.position.set(0, 0.2, -0.06);
+logoGroup.add(back);
+
+// “Orbit ring” around logo (universe vibe)
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(2.55, 0.03, 18, 180),
+  new THREE.MeshStandardMaterial({
+    color: 0x22c55e,
+    roughness: 0.35,
+    metalness: 0.05,
+    emissive: new THREE.Color(0x22c55e),
+    emissiveIntensity: 0.35
+  })
+);
+ring.rotation.x = Math.PI * 0.32;
+ring.rotation.y = Math.PI * 0.08;
+ring.position.set(0, 0.2, -0.02);
+logoGroup.add(ring);
+
+// Small orbit dot
+const dot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.06, 24, 24),
+  new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: new THREE.Color(0x6ee7ff),
+    emissiveIntensity: 0.9,
+    roughness: 0.4
+  })
+);
+logoGroup.add(dot);
+
+/* ---------- Animation (smooth “universe rotation”) ---------- */
 const clock = new THREE.Clock();
 function animate(){
   const t = clock.getElapsedTime();
-  guy.position.y = Math.sin(t * 1.05) * 0.035;
-  torso.scale.y = 0.68 + Math.sin(t * 1.7) * 0.008;
-  guy.rotation.y = Math.sin(t * 0.45) * 0.055;
+
+  // logo rotates like a floating sign
+  logoGroup.rotation.y = t * 0.55;
+  logoGroup.rotation.x = Math.sin(t * 0.45) * 0.08;
+
+  // gentle float
+  logoGroup.position.y = 0.2 + Math.sin(t * 0.9) * 0.08;
+
+  // ring additional rotation
+  ring.rotation.z = t * 0.9;
+
+  // orbiting dot
+  const a = t * 1.35;
+  dot.position.set(
+    Math.cos(a) * 2.55,
+    0.2 + Math.sin(a) * 0.35,
+    Math.sin(a) * 0.55 - 0.02
+  );
+
+  // subtle star drift
+  stars.rotation.y = t * 0.02;
+
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
