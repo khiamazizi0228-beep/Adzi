@@ -1,60 +1,134 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Green Guy</title>
-  <style>
-    body { margin:0; background:#6a4527; overflow:hidden; }
-  </style>
-</head>
-<body>
-
 <script type="module">
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x6a4527);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
 camera.position.set(0, 1.5, 5);
 
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(3,4,2);
-scene.add(light);
+// Lights (soft studio)
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const key = new THREE.DirectionalLight(0xffffff, 1.0);
+key.position.set(3, 4, 2);
+scene.add(key);
 
-const mat = new THREE.MeshStandardMaterial({ color: 0x22c55e });
+const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+fill.position.set(-4, 2, 1);
+scene.add(fill);
 
+// Green material
+const greenMat = new THREE.MeshStandardMaterial({
+  color: 0x22c55e,
+  roughness: 0.55,
+  metalness: 0.05
+});
+
+// Face material (black)
+const faceMat = new THREE.MeshStandardMaterial({
+  color: 0x111111,
+  roughness: 0.8,
+  metalness: 0.0
+});
+
+// Build Guy
 const guy = new THREE.Group();
 
-const head = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), mat);
-head.scale.y = 1.2;
-head.position.y = 1;
+// Head
+const head = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), greenMat);
+head.scale.set(1.0, 1.18, 1.0);
+head.position.y = 1.0;
 guy.add(head);
 
-const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 64, 64), mat);
-body.scale.y = 0.7;
-body.position.y = -0.6;
+// Body
+const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 64, 64), greenMat);
+body.scale.set(1.05, 0.72, 1.0);
+body.position.y = -0.65;
 guy.add(body);
 
 scene.add(guy);
 
+// ---------- FACE (eyes + smile) ----------
+// helper: make an arc (tube) in 3D
+function makeArc({ radius=0.25, thickness=0.035, start=0.1, end=Math.PI-0.1, y=0, x=0, z=0, rotX=0, rotY=0, rotZ=0 }) {
+  const pts = [];
+  const steps = 48;
+  for (let i = 0; i <= steps; i++) {
+    const t = start + (end - start) * (i / steps);
+    pts.push(new THREE.Vector3(Math.cos(t)*radius, Math.sin(t)*radius, 0));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const geom = new THREE.TubeGeometry(curve, 100, thickness, 14, false);
+  const mesh = new THREE.Mesh(geom, faceMat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.set(rotX, rotY, rotZ);
+  return mesh;
+}
+
+// Attach face to head so it moves with it
+const faceGroup = new THREE.Group();
+head.add(faceGroup);
+
+// Put face slightly above the head surface (avoid z-fighting)
+const faceZ = 0.98;
+
+// Eyes (upward arcs)
+const eyeLeft = makeArc({
+  radius: 0.22,
+  thickness: 0.04,
+  start: 0.15,
+  end: Math.PI - 0.15,
+  x: -0.33, y: 0.07, z: faceZ,
+  rotX: 0, rotY: 0, rotZ: Math.PI // flips to look like ∩
+});
+const eyeRight = makeArc({
+  radius: 0.22,
+  thickness: 0.04,
+  start: 0.15,
+  end: Math.PI - 0.15,
+  x: 0.33, y: 0.07, z: faceZ,
+  rotX: 0, rotY: 0, rotZ: Math.PI
+});
+faceGroup.add(eyeLeft, eyeRight);
+
+// Smile (downward arc)
+const smile = makeArc({
+  radius: 0.48,
+  thickness: 0.045,
+  start: 0.15,
+  end: Math.PI - 0.15,
+  x: 0, y: -0.35, z: faceZ,
+  rotX: 0, rotY: 0, rotZ: 0
+});
+faceGroup.add(smile);
+
+// Slightly curve face with head: tilt a bit
+faceGroup.rotation.x = -0.08;
+
+// ---------- Animation ----------
+let t0 = performance.now();
 function animate(){
-  guy.rotation.y += 0.003;
+  const t = (performance.now() - t0) / 1000;
+
+  // breathe + gentle sway
+  guy.position.y = Math.sin(t * 1.2) * 0.05;
+  body.scale.y = 0.72 + Math.sin(t * 1.8) * 0.02;
+  guy.rotation.y = Math.sin(t * 0.6) * 0.08;
+
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
 animate();
 
+// Resize
 addEventListener("resize", ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 </script>
-
-</body>
-</html>
