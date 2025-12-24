@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Green-Guy (3D)</title>
+  <title>Green-Guy (Better Face)</title>
   <style>
     html,body{margin:0;height:100%;overflow:hidden;background:#6a4527;}
     canvas{display:block;}
@@ -13,22 +13,21 @@
 <script type="module">
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-// ---------- Scene ----------
+/* ---------------- Scene / Camera / Renderer ---------------- */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x6a4527);
+scene.fog = new THREE.Fog(0x6a4527, 7.5, 16.5);
 
-// Camera
 const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.55, 5.3);
+camera.position.set(0, 1.55, 5.4);
 
-// Renderer
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// ---------- Soft "studio" lighting ----------
+/* Soft studio lights */
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
 const key = new THREE.DirectionalLight(0xffffff, 1.05);
@@ -39,137 +38,197 @@ const fill = new THREE.DirectionalLight(0xffffff, 0.35);
 fill.position.set(-3.5, 2.0, 1.5);
 scene.add(fill);
 
-// Rim light from behind (gives that rendered edge)
 const rim = new THREE.DirectionalLight(0xffffff, 0.45);
 rim.position.set(0.0, 2.5, -3.5);
 scene.add(rim);
 
-// ---------- Tiny procedural texture (subtle render grain) ----------
-function makeNoiseTexture(size = 256) {
+/* ---------------- Face textures (Color + NormalMap) ---------------- */
+function makeFaceTextures(size = 512){
+  // --- Color map (green base + black face) ---
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d");
-  const img = ctx.createImageData(size, size);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = 120 + Math.random() * 40; // subtle mid noise
-    img.data[i] = v;
-    img.data[i+1] = v;
-    img.data[i+2] = v;
-    img.data[i+3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 2);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-const noiseTex = makeNoiseTexture();
 
-// ---------- Materials ----------
-const greenMat = new THREE.MeshPhysicalMaterial({
-  color: 0x22c55e,
+  // base green (close to your render)
+  ctx.fillStyle = "#22c55e";
+  ctx.fillRect(0,0,size,size);
+
+  // draw face in BLACK on the front area of the UV sphere/capsule
+  // We'll place it centered; on a sphere UV, face looks correct from front.
+  ctx.strokeStyle = "#0a0a0a";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // eyes (half arcs) like your picture
+  const eyeY = size * 0.40;
+  const eyeR = size * 0.075;
+  const eyeGap = size * 0.16;
+  const eyeStroke = size * 0.045;
+
+  ctx.lineWidth = eyeStroke;
+
+  // left eye
+  ctx.beginPath();
+  ctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  ctx.stroke();
+
+  // right eye
+  ctx.beginPath();
+  ctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  ctx.stroke();
+
+  // smile (soft curve)
+  const smileY = size * 0.58;
+  const smileR = size * 0.16;
+  const smileStroke = size * 0.050;
+
+  ctx.lineWidth = smileStroke;
+  ctx.beginPath();
+  ctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false);
+  ctx.stroke();
+
+  const colorTex = new THREE.CanvasTexture(c);
+  colorTex.colorSpace = THREE.SRGBColorSpace;
+
+  // --- Height map for NORMAL generation (engraved effect) ---
+  // We draw the same shapes as "dents": darker = lower
+  const h = document.createElement("canvas");
+  h.width = h.height = size;
+  const hctx = h.getContext("2d");
+
+  // mid-gray base
+  hctx.fillStyle = "rgb(128,128,128)";
+  hctx.fillRect(0,0,size,size);
+
+  // dents: slightly darker
+  hctx.strokeStyle = "rgb(90,90,90)"; // lower height
+  hctx.lineCap = "round";
+  hctx.lineJoin = "round";
+
+  // softer edges: draw twice (blur-ish)
+  const drawDents = (wMul) => {
+    hctx.lineWidth = eyeStroke * wMul;
+    hctx.beginPath(); hctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false); hctx.stroke();
+    hctx.beginPath(); hctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false); hctx.stroke();
+
+    hctx.lineWidth = smileStroke * wMul;
+    hctx.beginPath(); hctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false); hctx.stroke();
+  };
+  drawDents(1.25);
+  hctx.strokeStyle = "rgb(70,70,70)";
+  drawDents(0.95);
+
+  // Convert heightmap -> normal map (simple Sobel)
+  const img = hctx.getImageData(0,0,size,size);
+  const data = img.data;
+
+  const normal = document.createElement("canvas");
+  normal.width = normal.height = size;
+  const nctx = normal.getContext("2d");
+  const nimg = nctx.createImageData(size,size);
+  const ndata = nimg.data;
+
+  const getH = (x,y) => {
+    x = Math.max(0, Math.min(size-1, x));
+    y = Math.max(0, Math.min(size-1, y));
+    const i = (y*size + x)*4;
+    return data[i] / 255; // 0..1 from red channel
+  };
+
+  // Strength of engraving
+  const strength = 2.2; // higher = deeper/stronger edges
+
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      // sobel
+      const tl = getH(x-1,y-1), t = getH(x,y-1), tr = getH(x+1,y-1);
+      const l  = getH(x-1,y),               r  = getH(x+1,y);
+      const bl = getH(x-1,y+1), b = getH(x,y+1), br = getH(x+1,y+1);
+
+      const dx = (tr + 2*r + br) - (tl + 2*l + bl);
+      const dy = (bl + 2*b + br) - (tl + 2*t + tr);
+
+      // normal vector
+      let nx = -dx * strength;
+      let ny = -dy * strength;
+      let nz = 1.0;
+
+      const len = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
+      nx /= len; ny /= len; nz /= len;
+
+      // pack to 0..255
+      const i = (y*size + x)*4;
+      ndata[i]   = (nx*0.5 + 0.5) * 255;
+      ndata[i+1] = (ny*0.5 + 0.5) * 255;
+      ndata[i+2] = (nz*0.5 + 0.5) * 255;
+      ndata[i+3] = 255;
+    }
+  }
+
+  nctx.putImageData(nimg,0,0);
+  const normalTex = new THREE.CanvasTexture(normal);
+  normalTex.colorSpace = THREE.SRGBColorSpace;
+
+  return { colorTex, normalTex };
+}
+
+const { colorTex, normalTex } = makeFaceTextures(512);
+
+/* ---------------- Materials ---------------- */
+const headMat = new THREE.MeshPhysicalMaterial({
+  map: colorTex,               // face is part of the material (not sticker)
+  color: 0xffffff,             // keep map colors
   roughness: 0.62,
   metalness: 0.02,
   clearcoat: 0.0,
-  sheen: 0.2,
-  sheenRoughness: 0.7
-});
-// add subtle grain via roughnessMap-like trick: use as map with low intensity via onBeforeCompile? too heavy.
-// simpler: use as map and reduce effect by mixing color—kept minimal:
-greenMat.map = null;
-
-const faceMat = new THREE.MeshStandardMaterial({
-  color: 0x0c0c0c,
-  roughness: 0.95,
-  metalness: 0.0
+  sheen: 0.18,
+  sheenRoughness: 0.75,
+  normalMap: normalTex,
+  normalScale: new THREE.Vector2(0.65, 0.65)  // engraved softness
 });
 
-// ---------- Green-Guy Group ----------
+const bodyMat = new THREE.MeshPhysicalMaterial({
+  color: 0x22c55e,
+  roughness: 0.64,
+  metalness: 0.02,
+  clearcoat: 0.0,
+  sheen: 0.18,
+  sheenRoughness: 0.75
+});
+
+/* ---------------- Build Green-Guy ---------------- */
 const guy = new THREE.Group();
 scene.add(guy);
 
-// Helper: capsule mesh (like your head)
-function makeCapsule(radius = 1, height = 1.2, segments = 64) {
-  // CapsuleGeometry exists in newer three versions, but to be safe we build it using CapsuleGeometry if available:
-  if (THREE.CapsuleGeometry) {
-    return new THREE.CapsuleGeometry(radius, height, segments, segments);
-  }
-  // fallback: use Cylinder + two spheres merged visually (group)
-  // (we won't use fallback here because unpkg version supports CapsuleGeometry)
-  return new THREE.CapsuleGeometry(radius, height, segments, segments);
-}
-
-// HEAD (capsule, smooth)
-const headGeo = makeCapsule(1.0, 1.05, 24);
-const head = new THREE.Mesh(headGeo, greenMat);
+// Head (capsule)
+const headGeo = new THREE.CapsuleGeometry(1.0, 1.05, 24, 48);
+const head = new THREE.Mesh(headGeo, headMat);
 head.position.set(0, 1.05, 0);
 head.scale.set(1.0, 1.05, 1.0);
 guy.add(head);
 
-// NECK (smooth transition)
+// Neck
 const neck = new THREE.Mesh(
   new THREE.CylinderGeometry(0.42, 0.55, 0.45, 64),
-  greenMat
+  bodyMat
 );
 neck.position.set(0, 0.28, 0);
 neck.rotation.x = 0.08;
 guy.add(neck);
 
-// TORSO (soft shoulders like reference)
-const torso = new THREE.Mesh(new THREE.SphereGeometry(1.45, 64, 64), greenMat);
+// Torso (soft shoulders)
+const torso = new THREE.Mesh(new THREE.SphereGeometry(1.45, 64, 64), bodyMat);
 torso.scale.set(1.2, 0.70, 1.1);
 torso.position.set(0, -0.78, 0);
 guy.add(torso);
 
-// ---------- FACE (embedded look) ----------
-// Trick: place the face geometry *slightly inside* the head surface.
-// That makes it look like "engraved", not sticker.
-
-const faceGroup = new THREE.Group();
-head.add(faceGroup);
-
-// position face group towards camera (front of head)
-faceGroup.position.set(0, 0.05, 0.98);
-faceGroup.rotation.x = -0.10; // matches head curvature a bit
-
-// Eye: half-arc using TorusGeometry segment
-function makeEye(x) {
-  const geo = new THREE.TorusGeometry(0.23, 0.055, 20, 80, Math.PI);
-  const eye = new THREE.Mesh(geo, faceMat);
-  eye.rotation.x = Math.PI / 2;      // stand it up
-  eye.rotation.z = Math.PI;          // flip to become ∩
-  eye.position.set(x, 0.10, -0.04);  // slightly INSIDE (negative z within faceGroup)
-  return eye;
-}
-
-const leftEye = makeEye(-0.36);
-const rightEye = makeEye(0.36);
-faceGroup.add(leftEye, rightEye);
-
-// Smile: larger half-arc
-const smileGeo = new THREE.TorusGeometry(0.48, 0.060, 22, 90, Math.PI);
-const smile = new THREE.Mesh(smileGeo, faceMat);
-smile.rotation.x = Math.PI / 2;
-smile.position.set(0, -0.36, -0.04); // slightly INSIDE
-faceGroup.add(smile);
-
-// Optional: soften face even more by tiny scale
-faceGroup.scale.set(1.0, 1.0, 1.0);
-
-// ---------- Camera framing / subtle fog for render vibe ----------
-scene.fog = new THREE.Fog(0x6a4527, 7.5, 16.5);
-
-// ---------- Animation (gentle like your image) ----------
+/* ---------------- Animation (gentle) ---------------- */
 const clock = new THREE.Clock();
 function animate(){
   const t = clock.getElapsedTime();
 
-  // very subtle breathing and micro turn
   guy.position.y = Math.sin(t * 1.1) * 0.04;
   torso.scale.y = 0.70 + Math.sin(t * 1.8) * 0.01;
-
-  // small friendly sway
   guy.rotation.y = Math.sin(t * 0.45) * 0.06;
 
   renderer.render(scene, camera);
@@ -177,7 +236,7 @@ function animate(){
 }
 animate();
 
-// Resize
+/* ---------------- Resize ---------------- */
 addEventListener("resize", ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
