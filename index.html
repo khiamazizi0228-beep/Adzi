@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Green-Guy (Better Face)</title>
+  <title>Green-Guy (Reference Look)</title>
   <style>
     html,body{margin:0;height:100%;overflow:hidden;background:#6a4527;}
     canvas{display:block;}
@@ -13,74 +13,90 @@
 <script type="module">
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-/* ---------------- Scene / Camera / Renderer ---------------- */
+/* ---------- TUNING (wenn du später feinjustieren willst) ---------- */
+const FACE = {
+  eyeY: 0.40,      // 0..1 in texture (höher = weiter oben)
+  eyeGap: 0.16,    // Abstand der Augen
+  eyeR: 0.075,     // Augenradius
+  eyeStroke: 0.050,// Strichdicke
+
+  smileY: 0.58,
+  smileR: 0.165,
+  smileStroke: 0.055
+};
+
+const COLORS = {
+  bg: 0x6a4527,
+  green: "#22c55e",
+  greenHex: 0x22c55e,
+  face: "#0b0b0b"
+};
+
+/* ---------- Scene ---------- */
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x6a4527);
-scene.fog = new THREE.Fog(0x6a4527, 7.5, 16.5);
+scene.background = new THREE.Color(COLORS.bg);
+scene.fog = new THREE.Fog(COLORS.bg, 7.5, 16.5);
 
-const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 1.55, 5.4);
+/* ---------- Camera (portrait framing like your image) ---------- */
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.45, 3.9);
 
+/* ---------- Renderer ---------- */
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-/* Soft studio lights */
+/* ---------- Lights (studio soft) ---------- */
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
 const key = new THREE.DirectionalLight(0xffffff, 1.05);
-key.position.set(3.2, 4.2, 2.2);
+key.position.set(3.2, 4.2, 2.0);
 scene.add(key);
 
 const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-fill.position.set(-3.5, 2.0, 1.5);
+fill.position.set(-3.5, 2.0, 1.2);
 scene.add(fill);
 
 const rim = new THREE.DirectionalLight(0xffffff, 0.45);
-rim.position.set(0.0, 2.5, -3.5);
+rim.position.set(0.0, 2.6, -3.5);
 scene.add(rim);
 
-/* ---------------- Face textures (Color + NormalMap) ---------------- */
-function makeFaceTextures(size = 512){
-  // --- Color map (green base + black face) ---
+/* ---------- Face Textures (ColorMap + BumpMap) ---------- */
+function makeFaceTextures(size = 1024){
+  // Color map: green base + black face lines
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d");
 
-  // base green (close to your render)
-  ctx.fillStyle = "#22c55e";
+  // base
+  ctx.fillStyle = COLORS.green;
   ctx.fillRect(0,0,size,size);
 
-  // draw face in BLACK on the front area of the UV sphere/capsule
-  // We'll place it centered; on a sphere UV, face looks correct from front.
-  ctx.strokeStyle = "#0a0a0a";
+  // face
+  ctx.strokeStyle = COLORS.face;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // eyes (half arcs) like your picture
-  const eyeY = size * 0.40;
-  const eyeR = size * 0.075;
-  const eyeGap = size * 0.16;
-  const eyeStroke = size * 0.045;
+  const eyeY = size * FACE.eyeY;
+  const eyeR = size * FACE.eyeR;
+  const eyeGap = size * FACE.eyeGap;
+  const eyeStroke = size * FACE.eyeStroke;
 
   ctx.lineWidth = eyeStroke;
-
-  // left eye
+  // left eye (half arc)
   ctx.beginPath();
   ctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false);
   ctx.stroke();
-
   // right eye
   ctx.beginPath();
   ctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false);
   ctx.stroke();
 
-  // smile (soft curve)
-  const smileY = size * 0.58;
-  const smileR = size * 0.16;
-  const smileStroke = size * 0.050;
+  const smileY = size * FACE.smileY;
+  const smileR = size * FACE.smileR;
+  const smileStroke = size * FACE.smileStroke;
 
   ctx.lineWidth = smileStroke;
   ctx.beginPath();
@@ -90,153 +106,115 @@ function makeFaceTextures(size = 512){
   const colorTex = new THREE.CanvasTexture(c);
   colorTex.colorSpace = THREE.SRGBColorSpace;
 
-  // --- Height map for NORMAL generation (engraved effect) ---
-  // We draw the same shapes as "dents": darker = lower
-  const h = document.createElement("canvas");
-  h.width = h.height = size;
-  const hctx = h.getContext("2d");
+  // Bump map: mid-gray base; darker lines = engraved
+  const b = document.createElement("canvas");
+  b.width = b.height = size;
+  const bctx = b.getContext("2d");
 
-  // mid-gray base
-  hctx.fillStyle = "rgb(128,128,128)";
-  hctx.fillRect(0,0,size,size);
+  bctx.fillStyle = "rgb(128,128,128)";
+  bctx.fillRect(0,0,size,size);
 
-  // dents: slightly darker
-  hctx.strokeStyle = "rgb(90,90,90)"; // lower height
-  hctx.lineCap = "round";
-  hctx.lineJoin = "round";
+  // soft “dent” pass 1 (wider)
+  bctx.strokeStyle = "rgb(85,85,85)";
+  bctx.lineCap = "round";
+  bctx.lineJoin = "round";
 
-  // softer edges: draw twice (blur-ish)
-  const drawDents = (wMul) => {
-    hctx.lineWidth = eyeStroke * wMul;
-    hctx.beginPath(); hctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false); hctx.stroke();
-    hctx.beginPath(); hctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false); hctx.stroke();
+  bctx.lineWidth = eyeStroke * 1.25;
+  bctx.beginPath();
+  bctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  bctx.stroke();
+  bctx.beginPath();
+  bctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  bctx.stroke();
 
-    hctx.lineWidth = smileStroke * wMul;
-    hctx.beginPath(); hctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false); hctx.stroke();
-  };
-  drawDents(1.25);
-  hctx.strokeStyle = "rgb(70,70,70)";
-  drawDents(0.95);
+  bctx.lineWidth = smileStroke * 1.20;
+  bctx.beginPath();
+  bctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false);
+  bctx.stroke();
 
-  // Convert heightmap -> normal map (simple Sobel)
-  const img = hctx.getImageData(0,0,size,size);
-  const data = img.data;
+  // soft “dent” pass 2 (sharper center)
+  bctx.strokeStyle = "rgb(65,65,65)";
+  bctx.lineWidth = eyeStroke * 0.95;
+  bctx.beginPath();
+  bctx.arc(size*0.5 - eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  bctx.stroke();
+  bctx.beginPath();
+  bctx.arc(size*0.5 + eyeGap, eyeY, eyeR, Math.PI, 0, false);
+  bctx.stroke();
 
-  const normal = document.createElement("canvas");
-  normal.width = normal.height = size;
-  const nctx = normal.getContext("2d");
-  const nimg = nctx.createImageData(size,size);
-  const ndata = nimg.data;
+  bctx.lineWidth = smileStroke * 0.95;
+  bctx.beginPath();
+  bctx.arc(size*0.5, smileY, smileR, 0.15*Math.PI, 0.85*Math.PI, false);
+  bctx.stroke();
 
-  const getH = (x,y) => {
-    x = Math.max(0, Math.min(size-1, x));
-    y = Math.max(0, Math.min(size-1, y));
-    const i = (y*size + x)*4;
-    return data[i] / 255; // 0..1 from red channel
-  };
+  const bumpTex = new THREE.CanvasTexture(b);
+  bumpTex.colorSpace = THREE.SRGBColorSpace;
 
-  // Strength of engraving
-  const strength = 2.2; // higher = deeper/stronger edges
-
-  for(let y=0;y<size;y++){
-    for(let x=0;x<size;x++){
-      // sobel
-      const tl = getH(x-1,y-1), t = getH(x,y-1), tr = getH(x+1,y-1);
-      const l  = getH(x-1,y),               r  = getH(x+1,y);
-      const bl = getH(x-1,y+1), b = getH(x,y+1), br = getH(x+1,y+1);
-
-      const dx = (tr + 2*r + br) - (tl + 2*l + bl);
-      const dy = (bl + 2*b + br) - (tl + 2*t + tr);
-
-      // normal vector
-      let nx = -dx * strength;
-      let ny = -dy * strength;
-      let nz = 1.0;
-
-      const len = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
-      nx /= len; ny /= len; nz /= len;
-
-      // pack to 0..255
-      const i = (y*size + x)*4;
-      ndata[i]   = (nx*0.5 + 0.5) * 255;
-      ndata[i+1] = (ny*0.5 + 0.5) * 255;
-      ndata[i+2] = (nz*0.5 + 0.5) * 255;
-      ndata[i+3] = 255;
-    }
-  }
-
-  nctx.putImageData(nimg,0,0);
-  const normalTex = new THREE.CanvasTexture(normal);
-  normalTex.colorSpace = THREE.SRGBColorSpace;
-
-  return { colorTex, normalTex };
+  return { colorTex, bumpTex };
 }
 
-const { colorTex, normalTex } = makeFaceTextures(512);
+const { colorTex, bumpTex } = makeFaceTextures(1024);
 
-/* ---------------- Materials ---------------- */
+/* ---------- Materials ---------- */
 const headMat = new THREE.MeshPhysicalMaterial({
-  map: colorTex,               // face is part of the material (not sticker)
-  color: 0xffffff,             // keep map colors
+  map: colorTex,
+  bumpMap: bumpTex,
+  bumpScale: -0.07,              // NEGATIV = “eingedrückt”
   roughness: 0.62,
   metalness: 0.02,
-  clearcoat: 0.0,
-  sheen: 0.18,
-  sheenRoughness: 0.75,
-  normalMap: normalTex,
-  normalScale: new THREE.Vector2(0.65, 0.65)  // engraved softness
-});
-
-const bodyMat = new THREE.MeshPhysicalMaterial({
-  color: 0x22c55e,
-  roughness: 0.64,
-  metalness: 0.02,
-  clearcoat: 0.0,
   sheen: 0.18,
   sheenRoughness: 0.75
 });
 
-/* ---------------- Build Green-Guy ---------------- */
+const bodyMat = new THREE.MeshPhysicalMaterial({
+  color: COLORS.greenHex,
+  roughness: 0.64,
+  metalness: 0.02,
+  sheen: 0.18,
+  sheenRoughness: 0.78
+});
+
+/* ---------- Build Green-Guy (Sphere+Stretch = clean UVs) ---------- */
 const guy = new THREE.Group();
 scene.add(guy);
 
-// Head (capsule)
-const headGeo = new THREE.CapsuleGeometry(1.0, 1.05, 24, 48);
+// HEAD: sphere stretched to look like capsule
+const headGeo = new THREE.SphereGeometry(1.0, 128, 128);
 const head = new THREE.Mesh(headGeo, headMat);
-head.position.set(0, 1.05, 0);
-head.scale.set(1.0, 1.05, 1.0);
+head.scale.set(1.0, 1.28, 1.0);      // “capsule” look
+head.position.set(0, 1.08, 0);
 guy.add(head);
 
-// Neck
+// NECK
 const neck = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.42, 0.55, 0.45, 64),
+  new THREE.CylinderGeometry(0.42, 0.58, 0.50, 96),
   bodyMat
 );
 neck.position.set(0, 0.28, 0);
 neck.rotation.x = 0.08;
 guy.add(neck);
 
-// Torso (soft shoulders)
-const torso = new THREE.Mesh(new THREE.SphereGeometry(1.45, 64, 64), bodyMat);
-torso.scale.set(1.2, 0.70, 1.1);
-torso.position.set(0, -0.78, 0);
+// TORSO: soft shoulders like your render
+const torso = new THREE.Mesh(new THREE.SphereGeometry(1.55, 128, 128), bodyMat);
+torso.scale.set(1.25, 0.68, 1.15);
+torso.position.set(0, -0.86, 0);
 guy.add(torso);
 
-/* ---------------- Animation (gentle) ---------------- */
+/* ---------- Animation (very subtle) ---------- */
 const clock = new THREE.Clock();
 function animate(){
   const t = clock.getElapsedTime();
 
-  guy.position.y = Math.sin(t * 1.1) * 0.04;
-  torso.scale.y = 0.70 + Math.sin(t * 1.8) * 0.01;
-  guy.rotation.y = Math.sin(t * 0.45) * 0.06;
+  guy.position.y = Math.sin(t * 1.05) * 0.035;
+  torso.scale.y = 0.68 + Math.sin(t * 1.7) * 0.008;
+  guy.rotation.y = Math.sin(t * 0.45) * 0.055;
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
 animate();
 
-/* ---------------- Resize ---------------- */
+/* ---------- Resize ---------- */
 addEventListener("resize", ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
